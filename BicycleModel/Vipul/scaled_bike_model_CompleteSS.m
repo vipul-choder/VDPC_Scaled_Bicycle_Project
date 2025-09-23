@@ -140,14 +140,15 @@ K2 = [
 
 Co = [
     Cophiphi Cophidel;
-    Codelphi Codeldel];
+    Codelphi Codeldel
+    ];
 
 %Test Parameters
 Tphi = 0;
 Tdel = 0;
 
 
-v = 5; %mpersec
+v = 20; %mpersec
 gravacc = 9.81;
 
 A = [ 
@@ -195,11 +196,11 @@ Dss = zeros(4, 2);
 
 % create state-space object (requires Control System Toolbox)
 sys = ss(Ass, Bss, Css, Dss);
-x0 = [0.0 ;0 ;0.5 ;0];
+x0 = [0 ;0 ;0.5 ;0];
 
-% simulate e.g. step response for each torque channel
+%simulate the state space system
 t = 0:0.01:10;
-u = zeros(length(t),2); u(:,1) = 0.1;   % step/impulse as needed
+u = zeros(length(t),2);   
 [y,t,x] = lsim(sys, u, t,x0);
 % plot(t, y);
 % legend();
@@ -216,43 +217,92 @@ figure;
 plot(t,delta_dot, Linewidth = 2, LineStyle="-", DisplayName = "DeltaRate");
 hold on;
 plot(t,phi_dot, Linewidth = 2, LineStyle=":", DisplayName = "RollRate");
-
 legend();
+
+figure;
+plot(t,delta, Linewidth = 2, LineStyle="-", DisplayName = "DeltaAngle");
+hold on;
+plot(t,phi, Linewidth = 2, LineStyle=":", DisplayName = "RollAngle");
+legend();
+
 
 %% Lets try deriving the Lateral positions derivative, yp, psi and yq
 
-psi_dot = (((v*delta) + c*(delta_dot))/w)*cos(lambda);
-psi_ddot = [0; diff(psi_dot)];
-
-
-yp_dot = v*psi_dot;
-yp_ddot = [0;diff(yp_dot)];
-
-figure;
-plot(t,yp_dot, Linewidth = 2, LineStyle="-", DisplayName = "yp_dot");
-hold on;
-plot(t,yp_ddot, Linewidth = 2, LineStyle=":", DisplayName = "yp_ddot");
-
-legend();
+% psi_dot = (((v*delta) + c*(delta_dot))/w)*cos(lambda);
+% psi_ddot = [0; diff(psi_dot)];
+% 
+% 
+% yp_dot = v*psi_dot;
+% yp_ddot = [0;diff(yp_dot)];
+% 
+% figure;
+% plot(t,yp_dot, Linewidth = 2, LineStyle="-", DisplayName = "yp_dot");
+% hold on;
+% plot(t,yp_ddot, Linewidth = 2, LineStyle=":", DisplayName = "yp_ddot");
+% 
+% legend();
 
 %% Lets try to get some forces
 
-TBphi = -mT.*yp_ddot.*zT + ITXX.*phi_ddot + ITXZ.*psi_ddot + IALZ.*delta_ddot + psi_dot.*v*ST + delta_dot.*v*SF*cos(lambda) + gravacc*mT*zT.*phi - gravacc*SA*delta;
+% TBphi = -mT.*yp_ddot.*zT + ITXX.*phi_ddot + ITXZ.*psi_ddot + IALZ.*delta_ddot + psi_dot.*v*ST + delta_dot.*v*SF*cos(lambda) + gravacc*mT*zT.*phi - gravacc*SA*delta;
+% 
+% figure;
+% plot(t,TBphi, Linewidth = 2, LineStyle="-", DisplayName = "Lean Torque [Nm]");
+% hold on;
+% yyaxis right;
+% plot(t, phi, Linewidth = 2, LineStyle="-", DisplayName = "Roll Angle [rad]");
+% legend();
+% 
+% 
+% FFy = (1/w)*(mT.*yp_ddot.*xT + ITXZ.*phi_ddot + ITZZ.*psi_ddot + IALZ.*delta_ddot - phi_dot.*v*ST - delta_dot.*v*SF*sin(lambda));
+% 
+% figure;
+% plot(t,FFy, Linewidth = 2, LineStyle="-", DisplayName = "Lateral Force [N]");
+% hold on;
+% yyaxis right;
+% plot(t, phi, Linewidth = 2, LineStyle="-", DisplayName = "Roll Angle [rad]");
+% legend();
 
-figure;
-plot(t,TBphi, Linewidth = 2, LineStyle="-", DisplayName = "Lean Torque [Nm]");
-hold on;
-yyaxis right;
-plot(t, phi, Linewidth = 2, LineStyle="-", DisplayName = "Roll Angle [rad]");
-legend();
+%% Lets try to get a Velocity sweep for Eigenvalues
+
+vRange = linspace(0,10,100);
+
+eigVals = [];
+
+for vi = vRange
+    A_ins = [ 
+            Mphiphi Mphidel;
+            Mdelphi Mdeldel
+    ];
 
 
-FFy = (1/w)*(mT.*yp_ddot.*xT + ITXZ.*phi_ddot + ITZZ.*psi_ddot + IALZ.*delta_ddot - phi_dot.*v*ST - delta_dot.*v*SF*sin(lambda));
+    B_ins = [
+            vi*Cophiphi vi*Cophidel;
+            vi*Codelphi vi*Codeldel
+        ];
 
-figure;
-plot(t,FFy, Linewidth = 2, LineStyle="-", DisplayName = "Lateral Force [N]");
-hold on;
-yyaxis right;
-plot(t, phi, Linewidth = 2, LineStyle="-", DisplayName = "Roll Angle [rad]");
-legend();
+    C_ins = [
+            gravacc*Kophiphi + vi^2*K2phiphi gravacc*Kophidel + vi^2*K2phidel;
+            gravacc*Kodelphi + vi^2*K2delphi gravacc*Kodeldel + vi^2*K2deldel
+        ];
 
+    A_eig = [
+            zeros(2,2) eye(2);
+            -A_ins\C_ins -A_ins\B_ins
+            ];
+    
+    lambda_ins = eig(A_eig);
+
+    eigVals = [eigVals; lambda_ins.'];
+
+end
+
+% Plot eigenvalues vs speed
+figure; hold on; grid on;
+for mode = 1:size(eigVals,2)
+    plot(vRange, real(eigVals(:,mode)),'-','LineWidth',1.5);
+end
+xlabel('Forward speed v [m/s]');
+ylabel('Real part of eigenvalue');
+title('Bicycle Eigenvalue Speed Sweep');
+legend('Mode 1','Mode 2','Mode 3','Mode 4');
